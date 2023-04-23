@@ -7,4 +7,4 @@ X = {
 }
 
 #ms, rs, Ps, Ls, Ts = full_stellar_integrator(M, X)
-m1s, r1s, P1s, L1s, T1s, m2s, r2s, P2s, L2s, T2s = full_stellar_integrator(M, X)
+m1s, r1s, P1s, L1s, T1s, rho1s, epsilon1s, kappa1s, m2s, r2s, P2s, L2s, T2s, rho2s, epsilon2s, kappa2s = full_stellar_integrator(M, X)

@@ -1,6 +1,7 @@
 import math
 import numpy as np
 import time
+import os, sys
 from utils import DataContainer, consts, clamp
 from structure import EOS
 from derivatives import stellar_derivatives
@@ -38,10 +39,15 @@ def single_stellar_integrator(STAR, perturbations, ODE_integrator, xi, max_steps
     STAR.boundaries_min = [min(STAR.boundaries_central[i], STAR.boundaries_surface[i]) for i in range(len(STAR.boundaries_central))]
     STAR.boundaries_max = [max(STAR.boundaries_central[i], STAR.boundaries_surface[i]) for i in range(len(STAR.boundaries_central))]
 
+    _, epsilon_central, kappa_central = EOS(z1_0, STAR)
+    _, epsilon_surface, kappa_surface = EOS(z2_0, STAR)
+
     m1s = [m1]
     m2s = [m2]
     z1s = [z1_0]
     z2s = [z2_0]
+    y1s = [np.array([rho_central, epsilon_central, kappa_central])]
+    y2s = [np.array([rho_surface, epsilon_surface, kappa_surface])]
     z1 = np.copy(z1_0)
     z2 = np.copy(z2_0)
 
@@ -87,6 +93,8 @@ def single_stellar_integrator(STAR, perturbations, ODE_integrator, xi, max_steps
                 z1 = rk4_integration(stellar_derivatives, z1, m1, h1, STAR=STAR)
                 z1 = np.array([clamp(z1[i], STAR.boundaries_min[i], STAR.boundaries_max[i]) for i in range(len(z1))])
                 rk41 = True
+                rho1, epsilon1, kappa1 = EOS(z1, STAR)
+                y1 = np.array([rho1, epsilon1, kappa1])
             except:
                 rk41_counter += 1
                 h1 *= 0.1
@@ -112,6 +120,8 @@ def single_stellar_integrator(STAR, perturbations, ODE_integrator, xi, max_steps
                 z2 = rk4_integration(stellar_derivatives, z2, m2, h2, STAR=STAR)
                 z2 = np.array([clamp(z2[i], STAR.boundaries_min[i], STAR.boundaries_max[i]) for i in range(len(z2))])
                 rk42 = True
+                rho2, epsilon2, kappa2 = EOS(z2, STAR)
+                y2 = np.array([rho2, epsilon2, kappa2])
             except:
                 rk42_counter += 1
                 h2 *= 0.1
@@ -162,6 +172,8 @@ def single_stellar_integrator(STAR, perturbations, ODE_integrator, xi, max_steps
         m2s.append(m2)
         z1s.append(z1)
         z2s.append(z2)
+        y1s.append(y1)
+        y2s.append(y2)
 
         if (i % 500 == 0):
             print("Completed %i steps..."%i, flush=True)
@@ -184,7 +196,7 @@ def single_stellar_integrator(STAR, perturbations, ODE_integrator, xi, max_steps
         raise Exception("Maximum number of iterations reached without convergence")
 
     print("Integration pass time: %.2f min"%((t2_single-t1_single)/60), flush=True)
-    return m1s, z1s, m2s, z2s
+    return m1s, z1s, y1s, m2s, z2s, y2s
 
 def stellar_perturbations(STAR, residuals, perturbations, ODE_integrator, xi, max_steps):
     """
@@ -211,7 +223,7 @@ def stellar_perturbations(STAR, residuals, perturbations, ODE_integrator, xi, ma
             new_perturbations[i] += 1e-2 * bcs[i]
         else:
             new_perturbations[i] *= 1.01
-        m1s_pert, z1s_pert, m2s_pert, z2s_pert = single_stellar_integrator(STAR, new_perturbations, ODE_integrator, xi, max_steps)
+        m1s_pert, z1s_pert, y1s_pert, m2s_pert, z2s_pert, y2s_pert = single_stellar_integrator(STAR, new_perturbations, ODE_integrator, xi, max_steps)
         residuals_pert = z2s_pert[-1] - z1s_pert[-1]
         residuals_matrix[:,i] = (residuals_pert-residuals)/(new_perturbations[i]-perturbations[i])
 
@@ -240,6 +252,13 @@ def full_stellar_integrator(MSTAR, X, ODE_integrator=rk4_integration, xi=0.1, ma
     * max_steps - maximum number of iterations allowed for convergence
     * delta - error tolerance for residuals
     """
+    outfolder = os.getcwd()
+    outfolder += "/outputs/"
+    outmass = np.round(float(MSTAR/consts.M_sun),1)
+    outfolder += "/M" + str(outmass) + "/"
+    if not os.path.isdir(outfolder):
+        os.mkdir(outfolder)
+
     print("Beginning stellar integration...", flush=True)
     t1_full = time.time()
 
@@ -253,7 +272,14 @@ def full_stellar_integrator(MSTAR, X, ODE_integrator=rk4_integration, xi=0.1, ma
 
     perturbations = np.zeros(4)
 
-    m1s, z1s, m2s, z2s = single_stellar_integrator(STAR, perturbations, ODE_integrator, xi, max_steps)
+    m1s, z1s, y1s, m2s, z2s, y2s = single_stellar_integrator(STAR, perturbations, ODE_integrator, xi, max_steps)
+    data = np.array([], dtype=[("m","f8"), ("r","f8"), ("L","f8"), ("P","f8"), ("T","f8"), ("rho","f8"), ("epsilon","O"), ("kappa","f8")])
+    for i in range(len(m1s)):
+        data = np.append(data, np.array([(m1s[i], z1s[i][0], z1s[i][1], z1s[i][2], z1s[i][3], y1s[i][0], y1s[i][1], y1s[i][2])], dtype=data.dtype))
+    for i in reversed(range(len(m2s))):
+        data = np.append(data, np.array([(m2s[i], z2s[i][0], z2s[i][1], z2s[i][2], z2s[i][3], y2s[i][0], y2s[i][1], y2s[i][2])], dtype=data.dtype))
+    np.save(outfolder + "pass00.npy",data)
+    
     residuals = z2s[-1] - z1s[-1]
     print("Residuals:", residuals, flush=True)
 
@@ -269,24 +295,55 @@ def full_stellar_integrator(MSTAR, X, ODE_integrator=rk4_integration, xi=0.1, ma
         print("Residuals counter:", residuals_counter, flush=True)
         perturbations = np.copy(new_perturbations)
 
-        m1s, z1s, m2s, z2s = single_stellar_integrator(STAR, perturbations, ODE_integrator, xi, max_steps)
+        m1s, z1s, y1s, m2s, z2s, y2s = single_stellar_integrator(STAR, perturbations, ODE_integrator, xi, max_steps)
+        data = np.array([], dtype=[("m","f8"), ("r","f8"), ("L","f8"), ("P","f8"), ("T","f8"), ("rho","f8"), ("epsilon","O"), ("kappa","f8")])
+        for i in range(len(m1s)):
+            data = np.append(data, np.array([(m1s[i], z1s[i][0], z1s[i][1], z1s[i][2], z1s[i][3], y1s[i][0], y1s[i][1], y1s[i][2])], dtype=data.dtype))
+        for i in reversed(range(len(m2s))):
+            data = np.append(data, np.array([(m2s[i], z2s[i][0], z2s[i][1], z2s[i][2], z2s[i][3], y2s[i][0], y2s[i][1], y2s[i][2])], dtype=data.dtype))
+        if (residuals_counter < 10):
+            np.save(outfolder + "pass0" + str(residuals_counter) + ".npy",data)
+        elif (residuals_counter < 100):
+            np.save(outfolder + "pass" + str(residuals_counter) + ".npy",data)
+        else:
+            raise Exception("Too many perturbations without convergence")
+        
         residuals = z2s[-1] - z1s[-1]
         print("Residuals:", residuals, flush=True)
         new_perturbations = stellar_perturbations(STAR, residuals, perturbations, ODE_integrator, xi, max_steps)
 
         residuals_counter += 1
 
-    m1s, z1s, m2s, z2s = single_stellar_integrator(STAR, perturbations, ODE_integrator, xi, max_steps)
+    m1s, z1s, y1s, m2s, z2s, y2s = single_stellar_integrator(STAR, perturbations, ODE_integrator, xi, max_steps)
+    data = np.array([], dtype=[("m","f8"), ("r","f8"), ("L","f8"), ("P","f8"), ("T","f8"), ("rho","f8"), ("epsilon","O"), ("kappa","f8")])
+    for i in range(len(m1s)):
+        data = np.append(data, np.array([(m1s[i], z1s[i][0], z1s[i][1], z1s[i][2], z1s[i][3], y1s[i][0], y1s[i][1], y1s[i][2])], dtype=data.dtype))
+    for i in reversed(range(len(m2s))):
+        data = np.append(data, np.array([(m2s[i], z2s[i][0], z2s[i][1], z2s[i][2], z2s[i][3], y2s[i][0], y2s[i][1], y2s[i][2])], dtype=data.dtype))
+    if (residuals_counter < 10):
+        np.save(outfolder + "pass0" + str(residuals_counter) + ".npy",data)
+    elif (residuals_counter < 100):
+        np.save(outfolder + "pass" + str(residuals_counter) + ".npy",data)
+    else:
+        raise Exception("Too many perturbations without convergence")
 
     r1s = np.array([zed[0] for zed in z1s])
     P1s = np.array([zed[1] for zed in z1s])
     L1s = np.array([zed[2] for zed in z1s])
     T1s = np.array([zed[3] for zed in z1s])
 
+    rho1s = np.array([y[0] for y in y1s])
+    epsilon1s = np.array([y[1] for y in y1s])
+    kappa1s = np.array([y[2] for y in y1s])
+
     r2s = np.array([zed[0] for zed in z2s])
     P2s = np.array([zed[1] for zed in z2s])
     L2s = np.array([zed[2] for zed in z2s])
     T2s = np.array([zed[3] for zed in z2s])
+
+    rho2s = np.array([y[0] for y in y2s])
+    epsilon2s = np.array([y[1] for y in y2s])
+    kappa2s = np.array([y[2] for y in y2s])
 
     #ms = np.concatenate((m1s[:-1],np.array([np.mean(m1s[-1],m2s[-1])]),m2s[::-1][1:]))
     #rs = np.concatenate((r1s[:-1],np.array([np.mean(r1s[-1],r2s[-1])]),r2s[::-1][1:]))
@@ -298,4 +355,4 @@ def full_stellar_integrator(MSTAR, X, ODE_integrator=rk4_integration, xi=0.1, ma
     print("Full integration time: %.2f min"%((t2_full-t1_full)/60), flush=True)
 
     #return ms, rs, Ps, Ls, Ts
-    return m1s, r1s, P1s, L1s, T1s, m2s, r2s, P2s, L2s, T2s
+    return m1s, r1s, P1s, L1s, T1s, rho1s, epsilon1s, kappa1s, m2s, r2s, P2s, L2s, T2s, rho2s, epsilon2s, kappa2s
