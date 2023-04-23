@@ -310,7 +310,9 @@ def full_stellar_integrator(MSTAR, X, ODE_integrator=rk4_integration, xi=0.1, ma
         
         residuals = z2s[-1] - z1s[-1]
         print("Residuals:", residuals, flush=True)
+
         new_perturbations = stellar_perturbations(STAR, residuals, perturbations, ODE_integrator, xi, max_steps)
+        print("Perturbations:", new_perturbations, flush=True)
 
         residuals_counter += 1
 
