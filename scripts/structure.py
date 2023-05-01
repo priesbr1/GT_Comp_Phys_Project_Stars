@@ -132,7 +132,7 @@ def reduced_luminosity(X, rho, T):
         epsilon[r"$pp$-chain"] = epsilon_pp
     if all([species in X.keys() for species in ["H","C","N","O"]]):
         epsilon_CNO = 4.4e24 * (rho*X["H"]*(X["C"]+X["N"]+X["O"]) / T**(2/3)) * np.exp(-15.288e3 / T**(1/3))
-        epsilon[r"$\mathrm{CNO}"] = epsilon_CNO
+        epsilon[r"$\mathrm{CNO}$"] = epsilon_CNO
     if all([species in X.keys() for species in ["He"]]):
         epsilon_3alpha = 5.1e28 * (rho**2 * X["He"]**3 / T**3) * np.exp(-4.4027e9 / T)
         epsilon[r"3-$\alpha$"] = epsilon_3alpha
