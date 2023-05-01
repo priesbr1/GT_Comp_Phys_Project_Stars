@@ -1,4 +1,4 @@
-# GT_Comp_Phys_Project_Stellar Integration
+# GT_Comp_Phys_Project_Stellar_Integration
 
 This is my Computational Physics (PHYS 6260) project for stellar structure integration at Georgia Tech.
 
